@@ -51,8 +51,9 @@ def get_folder_size(path: str) -> int:
 def get_folder_contents(path: str) -> List[str]:
     """
     Get the list of files and folders in the given directory.
+    Excluding symbolic links
     """
-    return os.listdir(path)
+    return [name for name in os.listdir(path) if not os.path.islink(os.path.join(path, name))]
 
 def compare_folders(folder1: str, folder2: str) -> float:
     """
@@ -114,6 +115,7 @@ def main():
     max_size = parse_size(args.max_size) if args.max_size else float('inf')
     min_size = parse_size(args.min_size) if args.min_size else 0
 
+    print("Counting total directories to check...")
     total_dirs = 0
     for root, dirs, files in os.walk(args.PATH, followlinks=False):
         total_dirs += len(dirs)
@@ -122,6 +124,8 @@ def main():
     folders = []
     processed_dirs = 0
     for root, dirs, files in os.walk(args.PATH, followlinks=False):
+        # Remove symbolic links from the list of directories to traverse
+        dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d))]
         for dir in dirs:
             dir_path = os.path.join(root, dir)
             progress = (processed_dirs / total_dirs) * 100
