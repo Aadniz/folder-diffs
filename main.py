@@ -5,8 +5,9 @@ import sys
 import csv
 import tempfile
 import argparse
+import wcwidth
 from datetime import datetime
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Set
 
 def parse_size(size_str: str) -> int:
     """
@@ -48,19 +49,32 @@ def get_folder_size(path: str) -> int:
             total_size += os.path.getsize(fp)
     return total_size
 
-def get_folder_contents(path: str) -> List[str]:
+def get_folder_contents(path: str, max_depth: int = 1, current_depth: int = 0) -> Set[str]:
     """
-    Get the list of files and folders in the given directory.
-    Excluding symbolic links
+    Get the list of files and folders in the given directory, skipping symbolic links.
+    If max_depth > 1, recursively traverse subdirectories up to the specified depth.
     """
-    return [name for name in os.listdir(path) if not os.path.islink(os.path.join(path, name))]
+    contents = set()
+    try:
+        for name in os.listdir(path):
+            full_path = os.path.join(path, name)
+            if os.path.islink(full_path):  # Skip symbolic links
+                continue
+            contents.add(name)
+            if os.path.isdir(full_path) and current_depth < max_depth - 1:
+                # Recursively get contents of subdirectories
+                sub_contents = get_folder_contents(full_path, max_depth, current_depth + 1)
+                contents.update(f"{name}/{item}" for item in sub_contents)
+    except PermissionError as e:
+        print(e)
+    return contents
 
-def compare_folders(folder1: str, folder2: str) -> float:
+def compare_folders(folder1: str, folder2: str, max_depth: int = 1) -> float:
     """
     Compare two folders and return a similarity score.
     """
-    contents1 = set(get_folder_contents(folder1))
-    contents2 = set(get_folder_contents(folder2))
+    contents1 = get_folder_contents(folder1, max_depth)
+    contents2 = get_folder_contents(folder2, max_depth)
     common = contents1.intersection(contents2)
     total = max(len(contents1), len(contents2))
     if total == 0:
@@ -77,7 +91,18 @@ def print_handler(text: str, verbose: bool = False, silent: bool = False):
         print(text)
     else:
         terminal_width = os.get_terminal_size()[0]
-        print(text[:terminal_width], end="\r")
+        if len(text) != wcwidth.wcswidth(text):  # Wide characters like Japanese characters
+            truncated_text = ""
+            current_width = 0
+            for char in text:
+                char_width = wcwidth.wcwidth(char)
+                if current_width + char_width > terminal_width:
+                    break
+                truncated_text += char
+                current_width += char_width
+            print(truncated_text, end="\r")
+        else:
+            print(text[:terminal_width], end="\r")
         sys.stdout.write('\x1b[2K')
 
 def save_to_csv(results: List[Dict[str, str]], output_file: str):
@@ -104,6 +129,8 @@ def main():
     parser.add_argument("-p", "--print", action="store_true", help="Print results to console")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose information (will slow down the scan)")
     parser.add_argument("--silent", action="store_true", help="Don't print anything during scanning (will speed up scan)")
+    parser.add_argument("--max-depth", type=int, default=1, help="Set the max depth to compare folder similarities to")
+    parser.add_argument("--sort", type=str, choices=["name", "similarity", "size"], default="similarity", help="Sort results by name, similarity, or size (default: similarity)")
 
     args = parser.parse_args()
 
@@ -131,7 +158,7 @@ def main():
             progress = (processed_dirs / total_dirs) * 100
             print_handler(f"Gathering folders... {progress:.2f}% {dir_path}", args.verbose, args.silent)
             dir_size = get_folder_size(dir_path)
-            if min_size <= dir_size <= max_size and len(get_folder_contents(dir_path)) >= args.min_files:
+            if min_size <= dir_size <= max_size and len(get_folder_contents(dir_path, args.max_depth)) >= args.min_files:
                 folders.append({
                     "path": dir_path,
                     "size": dir_size
@@ -151,7 +178,7 @@ def main():
             progress = (completed_comparisons / total_comparisons) * 100
             if completed_comparisons % print_interval == 0:
                 print_handler(f"Comparing... {progress:.2f}% {folders[i]['path']} <-> {folders[j]['path']}", args.verbose, args.silent)
-            similarity = compare_folders(folders[i]["path"], folders[j]["path"])
+            similarity = compare_folders(folders[i]["path"], folders[j]["path"], args.max_depth)
             if similarity * 100.0 >= args.min_similarity:
                 similarities.append({
                     "folder1": folders[i]["path"],
@@ -161,8 +188,12 @@ def main():
                 })
             completed_comparisons += 1
 
-    # Sort similarities by similarity (descending) and then by size (descending)
-    similarities.sort(key=lambda x: (-x["similarity"], -x["size"]))
+    if args.sort == "name":
+        similarities.sort(key=lambda x: (x["folder1"], x["folder2"], -x["similarity"], -x["size"]))
+    elif args.sort == "size":
+        similarities.sort(key=lambda x: (-x["size"], -x["similarity"], x["folder1"], x["folder2"]))
+    else:
+        similarities.sort(key=lambda x: (-x["similarity"], -x["size"], x["folder1"], x["folder2"]))
 
     if len(similarities) < 200 or args.print:
         for entry in similarities:
