@@ -4,6 +4,7 @@ import os
 import sys
 import csv
 import tempfile
+import shutil
 import argparse
 import wcwidth
 from datetime import datetime
@@ -109,14 +110,138 @@ def save_to_csv(results: List[Dict[str, str]], output_file: str):
     """Save the results to a CSV file."""
     with open(output_file, mode="w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["Similarity", "Total Size","Folder 1", "Folder 2"])
+        writer.writerow(["Similarity", "Path 1", "Size 1", "Path 2", "Size 2"])
         for entry in results:
             writer.writerow([
                 entry['similarity'],
-                entry["size"],
                 os.path.abspath(entry["folder1"]),
-                os.path.abspath(entry["folder2"])
+                entry["folder1_size"],
+                os.path.abspath(entry["folder2"]),
+                entry["folder2_size"]
             ])
+
+def interactive_menu(similarities: List[Dict[str, str]]):
+    print("===                  ===")
+    print("Entered interactive menu")
+    print("===                  ===")
+    print()
+
+    temp_dir = tempfile.gettempdir()
+    deletion_paths_file = os.path.join(temp_dir, f"folder_diffs_deletion_paths_{datetime.now().strftime('%Y%m%d')}.txt")
+    has_shown_warning = False
+    deleted_paths = []
+
+    def append_deletion_path(filename, content):
+        deletion_warning_message()
+        with open(filename, "a") as myfile:
+            myfile.write(content + "\n")
+        print(f"Appended deletion: {content} >> {filename}")
+
+    def deletion_warning_message():
+        nonlocal has_shown_warning, deletion_paths_file
+        if has_shown_warning:
+            return
+        print("========================")
+        print(f"For safety reasons, are all deletions not done here. The paths are appended to {deletion_paths_file}")
+        print("Use an external program to delete these paths outside of the script")
+        print("========================")
+        has_shown_warning = True
+
+    def remove_related_paths(similarities, deleted_path):
+        """
+        Remove entries from the similarities list that involve the deleted path.
+        """
+        new_similarities = []
+        for entry in similarities:
+            path1 = entry["folder1"]
+            path2 = entry["folder2"]
+            if path1.startswith(deleted_path) or path2.startswith(deleted_path):
+                continue
+            new_similarities.append(entry)
+        return new_similarities
+
+
+    def right_aligned(text, total_width):
+        """
+        Right-align text within a given width, handling Unicode characters correctly.
+        """
+        display_width = wcwidth.wcswidth(text)
+        if display_width > total_width:
+            cut_length = total_width - 3  # Reserve 3 spaces for '...'
+            while wcwidth.wcswidth(text[:cut_length]) > total_width - 3:
+                cut_length -= 1
+            text = text[:cut_length] + '...'
+        else:
+            padding = total_width - display_width
+            text = ' ' * padding + text
+        return text
+
+    for entry in list(similarities):
+        # Set path1 and size1 to the biggest folder
+        if entry["folder1_size"] >= entry["folder2_size"]:
+            path1 = entry["folder1"]
+            path2 = entry["folder2"]
+            size1 = entry["folder1_size"]
+            size2 = entry["folder2_size"]
+        else:
+            path1 = entry["folder2"]
+            path2 = entry["folder1"]
+            size1 = entry["folder2_size"]
+            size2 = entry["folder1_size"]
+
+        # Skip if already been marked as deleted
+        skip = False
+        for path in deleted_paths:
+            if path1.startswith(path) or path2.startswith(path):
+                skip = True
+                break
+        if skip:
+            continue
+
+        human_size1 = human_readable_size(size1)
+        human_size2 = human_readable_size(size2)
+        similarity = entry['similarity']
+
+        # Some astetics
+        terminal_width = os.get_terminal_size()[0]
+        longest_path_len = min(max(wcwidth.wcswidth(path1), wcwidth.wcswidth(path2)), terminal_width - max(len(human_size1), len(human_size2)) - 1)
+
+        print(f"\nWhat to do with:    (Structure similarity: {(similarity * 100):.2f}%)")
+        print(right_aligned(path1, longest_path_len) + " " + human_size1)
+        print(right_aligned(path2, longest_path_len) + " " + human_size2)
+        print("Merge up (mu), Merge down (md), Skip (s), Delete up (du), Delete down (dd), quit (q)")
+        while True:
+            choice = input("> ").strip()
+            if choice == "mu":
+                print(f"Merging {path2} into {path1}...")
+                shutil.copytree(path2, path1, dirs_exist_ok=True)
+                print("Merge complete.")
+                append_deletion_path(deletion_paths_file, path2)
+                deleted_paths.append(path2)
+                break
+            elif choice == "md":
+                print(f"Merging {path1} into {path2}...")
+                shutil.copytree(path1, path2, dirs_exist_ok=True)
+                print("Merge complete.")
+                append_deletion_path(deletion_paths_file, path1)
+                deleted_paths.append(path1)
+                break
+            elif choice == "s":
+                print("Skipping...")
+                break
+            elif choice == "du":
+                append_deletion_path(deletion_paths_file, path1)
+                deleted_paths.append(path1)
+                break
+            elif choice == "dd":
+                append_deletion_path(deletion_paths_file, path2)
+                deleted_paths.append(path2)
+                break
+            elif choice == "q":
+                print("Quitting...")
+                sys.exit(0)
+            else:
+                print("Invalid choice. Please try again.")
 
 def main():
     parser = argparse.ArgumentParser(description="Find duplicate or similar folder structures.")
@@ -128,6 +253,7 @@ def main():
     parser.add_argument("-o", "--output", type=str, default=None, help="Output file path for saving results (default: system temp directory)")
     parser.add_argument("-p", "--print", action="store_true", help="Print results to console")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show verbose information (will slow down the scan)")
+    parser.add_argument("-i", "--interactive", action="store_true", help="Enable interactive menu for merging folders")
     parser.add_argument("--silent", action="store_true", help="Don't print anything during scanning (will speed up scan)")
     parser.add_argument("--max-depth", type=int, default=1, help="Set the max depth to compare folder similarities to")
     parser.add_argument("--sort", type=str, choices=["name", "similarity", "size"], default="similarity", help="Sort results by name, similarity, or size (default: similarity)")
@@ -195,31 +321,35 @@ def main():
                 similarities.append({
                     "folder1": folders[i]["path"],
                     "folder2": folders[j]["path"],
-                    "similarity": similarity,
-                    "size": folders[i]["size"] + folders[j]["size"]
+                    "folder1_size": folders[i]["size"],
+                    "folder2_size": folders[j]["size"],
+                    "similarity": similarity
                 })
             completed_comparisons += 1
 
     if args.sort == "name":
-        similarities.sort(key=lambda x: (x["folder1"], x["folder2"], -x["similarity"], -x["size"]))
+        similarities.sort(key=lambda x: (x["folder1"], x["folder2"], -x["similarity"], -(x["folder1_size"] + x["folder2_size"])))
     elif args.sort == "size":
-        similarities.sort(key=lambda x: (-x["size"], -x["similarity"], x["folder1"], x["folder2"]))
+        similarities.sort(key=lambda x: (-(x["folder1_size"] + x["folder2_size"]), -x["similarity"], x["folder1"], x["folder2"]))
     else:
-        similarities.sort(key=lambda x: (-x["similarity"], -x["size"], x["folder1"], x["folder2"]))
+        similarities.sort(key=lambda x: (-x["similarity"], -(x["folder1_size"] + x["folder2_size"]), x["folder1"], x["folder2"]))
 
     if len(similarities) < 200 or args.print:
         for entry in similarities:
-            print(f"Similarity: {(entry['similarity'] * 100):.2f}%, Total Size: {human_readable_size(entry['size'])}")
-            print(f"  Folder 1: {entry['folder1']}")
-            print(f"  Folder 2: {entry['folder2']}")
+            print(f"Similarity: {(entry['similarity'] * 100):.2f}%")
+            print(f"  Dir 1: {human_readable_size(entry['folder1_size'])}\t{entry['folder1']}")
+            print(f"  Dir 2: {human_readable_size(entry['folder2_size'])}\t{entry['folder2']}")
             print()
     else:
         if not args.print:
-            print("Too many results to print to stdout.")
+            print(f"Too many results ({len(similarities)}) to print to stdout.")
             print("Use `-p` to force print it if wanted")
 
         save_to_csv(similarities, output_file)
         print(f"Results saved to: {output_file}")
+
+    if args.interactive:
+        interactive_menu(similarities)
 
 if __name__ == '__main__':
     main()

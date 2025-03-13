@@ -33,19 +33,20 @@ python main.py /path/to/analyze /another/path/to/analyze /yet/another/path \
 
 ### Arguments
 
-| Argument           | Description                                                                    |
-|:-------------------|:-------------------------------------------------------------------------------|
-| `paths`            | Paths to analyze (required)                                                    |
-| `--max-size`       | Maximum folder size (e.g., `10MB`)                                             |
-| `--min-size`       | Minimum folder size (e.g., `1KB`)                                              |
-| `--min-files`      | Minimum number of files/folders in a folder (default: `1`)                     |
-| `--max-depth`      | Maximum depth of subfolders to compare to each other (default: `1`)            |
-| `--min-similarity` | Minimum similarity percentage (0-100) to include in results (default: `50`)    |
-| `-o`, `--output`   | Output file path for saving results (default: `/tmp/folder_diffs-{date}.csv)`  |
-| `--print`          | Force printing results to the console, even if there are more than 200 results |
-| `-v`, `--verbose`  | Show verbose information                                                       |
-| `--silent`         | Don't print anything during scanning                                           |
-| `--sort`           | Sorting the result, can be size, similarity or name                            |
+| Argument              | Description                                                                    |
+|:----------------------|:-------------------------------------------------------------------------------|
+| `paths`               | Paths to analyze (required)                                                    |
+| `--max-size`          | Maximum folder size (e.g., `10MB`)                                             |
+| `--min-size`          | Minimum folder size (e.g., `1KB`)                                              |
+| `--min-files`         | Minimum number of files/folders in a folder (default: `1`)                     |
+| `--max-depth`         | Maximum depth of subfolders to compare to each other (default: `1`)            |
+| `--min-similarity`    | Minimum similarity percentage (0-100) to include in results (default: `50`)    |
+| `-o`, `--output`      | Output file path for saving results (default: `/tmp/folder_diffs-{date}.csv)`  |
+| `-i`, `--interactive` | Start interactive menu to merge, delete or skip folder matches                 |
+| `--print`             | Force printing results to the console, even if there are more than 200 results |
+| `-v`, `--verbose`     | Show verbose information                                                       |
+| `--silent`            | Don't print anything during scanning                                           |
+| `--sort`              | Sorting the result, can be size, similarity or name                            |
 
 ## Examples
 
@@ -90,7 +91,7 @@ python main.py /home/user/Documents \
 ```
 
 ## Output
-Output can either be printed to standard output, or saved to a csv file.
+Output can be printed to standard output, or saved to a csv file.
 Unless specified otherwise, it will save to a CSV file if there is more than 200 results.
 
 ### Console Output
@@ -111,4 +112,48 @@ Similarity: 60.00%, Total Size: 2.93 KB
 Similarity,Total Size,Folder 1,Folder 2
 0.8,2440,/home/user/documents/folder1,/home/user/documents/folder2
 0.6,2935,/home/user/documents/folder1,/home/user/documents/folder3
+```
+
+### Interactive menu
+
+Using the `-i` argument, you can enter interactive menu to delete, merge or skip folder matches.
+For safety reasons, no *actual* deletions will happen. Rather, the paths to be deleted are appended to a file located in `/tmp`.
+
+```
+===                  ===
+Entered interactive menu
+===                  ===
+
+
+What to do with:    (Structure similarity: 100.00%)
+                 /tmp/test_folder/Documents 16.06 MB
+/tmp/test_folder/backup/Downloads/Documents 16.06 MB
+Merge up (mu), Merge down (md), Skip (s), Delete up (du), Delete down (dd), quit (q)
+> du
+========================
+For safety reasons, are all deletions not done here. The paths are appended to /tmp/nix-shell.GbKSQQ/folder_diffs_deletion_paths_20250313.txt
+Use an external program to delete these paths outside of the script
+========================
+Appended deletion: /tmp/test_folder/Documents >> /tmp/nix-shell.GbKSQQ/folder_diffs_deletion_paths_20250313.txt
+
+What to do with:    (Structure similarity: 80.00%)
+/tmp/test_folder/backup/Downloads 46.43 MB
+       /tmp/test_folder/Downloads 15.19 MB
+Merge up (mu), Merge down (md), Skip (s), Delete up (du), Delete down (dd), quit (q)
+> dd
+Appended deletion: /tmp/test_folder/Downloads >> /tmp/nix-shell.GbKSQQ/folder_diffs_deletion_paths_20250313.txt
+
+What to do with:    (Structure similarity: 70.00%)
+                    /tmp/test_folder/backup 47.30 MB
+/tmp/test_folder/backup/Downloads/Documents 16.06 MB
+Merge up (mu), Merge down (md), Skip (s), Delete up (du), Delete down (dd), quit (q)
+> dd
+Appended deletion: /tmp/test_folder/backup/Downloads/Documents >> /tmp/nix-shell.GbKSQQ/folder_diffs_deletion_paths_20250313.txt
+
+What to do with:    (Structure similarity: 80.00%)
+          /tmp/test_folder/backup/Downloads 46.43 MB
+/tmp/test_folder/backup/Downloads/Downloads 15.19 MB
+Merge up (mu), Merge down (md), Skip (s), Delete up (du), Delete down (dd), quit (q)
+> du
+Appended deletion: /tmp/test_folder/backup/Downloads >> /tmp/nix-shell.GbKSQQ/folder_diffs_deletion_paths_20250313.txt
 ```
