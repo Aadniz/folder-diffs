@@ -120,7 +120,7 @@ def save_to_csv(results: List[Dict[str, str]], output_file: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Find duplicate or similar folder structures.")
-    parser.add_argument("PATH", type=str, help="Path to analyze")
+    parser.add_argument("PATHS", type=str, nargs="+", help="Paths to analyze")
     parser.add_argument("--max-size", type=str, help="Maximum folder size (e.g., 10MB)")
     parser.add_argument("--min-size", type=str, help="Minimum folder size (e.g., 1KB)")
     parser.add_argument("-f", "--min-files", type=int, default=1, help="Minimum number of files/folders in folders")
@@ -134,6 +134,16 @@ def main():
 
     args = parser.parse_args()
 
+    # Check if any path is a subdirectory of another
+    has_overlaps = False
+    for i in range(len(args.PATHS)):
+        for j in range(i + 1, len(args.PATHS)):
+            if is_subdirectory(args.PATHS[i], args.PATHS[j]) or is_subdirectory(args.PATHS[j], args.PATHS[i]):
+                print(f"Error: Paths cannot overlap: {args.PATHS[i]} and {args.PATHS[j]}")
+                has_overlaps = True
+    if has_overlaps:
+        sys.exit(1)
+
     # Determine the output file path
     temp_dir = tempfile.gettempdir()
     output_file = args.output if args.output is not None else os.path.join(temp_dir, f"folder_diffs_{datetime.now().strftime('%Y%m%d-%H%M%S')}.csv")
@@ -144,26 +154,28 @@ def main():
 
     print("Counting total directories to check...")
     total_dirs = 0
-    for root, dirs, files in os.walk(args.PATH, followlinks=False):
-        total_dirs += len(dirs)
+    for path in args.PATHS:
+        for root, dirs, files in os.walk(path, followlinks=False):
+            total_dirs += len(dirs)
 
     # Collect all folders that meet the size and file count criteria
     folders = []
     processed_dirs = 0
-    for root, dirs, files in os.walk(args.PATH, followlinks=False):
-        # Remove symbolic links from the list of directories to traverse
-        dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d))]
-        for dir in dirs:
-            dir_path = os.path.join(root, dir)
-            progress = (processed_dirs / total_dirs) * 100
-            print_handler(f"Gathering folders... {progress:.2f}% {dir_path}", args.verbose, args.silent)
-            dir_size = get_folder_size(dir_path)
-            if min_size <= dir_size <= max_size and len(get_folder_contents(dir_path, args.max_depth)) >= args.min_files:
-                folders.append({
-                    "path": dir_path,
-                    "size": dir_size
-                })
-            processed_dirs += 1
+    for path in args.PATHS:
+        for root, dirs, files in os.walk(path, followlinks=False):
+            # Remove symbolic links from the list of directories to traverse
+            dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(root, d))]
+            for dir in dirs:
+                dir_path = os.path.join(root, dir)
+                progress = (processed_dirs / total_dirs) * 100
+                print_handler(f"Gathering folders... {progress:.2f}% {dir_path}", args.verbose, args.silent)
+                dir_size = get_folder_size(dir_path)
+                if min_size <= dir_size <= max_size and len(get_folder_contents(dir_path, args.max_depth)) >= args.min_files:
+                    folders.append({
+                        "path": dir_path,
+                        "size": dir_size
+                    })
+                processed_dirs += 1
 
     # Collecting all similarities comparing all folders against all folders
     similarities = []

@@ -21,13 +21,13 @@ python main.py /path/to/analyze
 ### Advanced Options
 
 ```shell
-python main.py /path/to/analyze \
+python main.py /path/to/analyze /another/path/to/analyze /yet/another/path \
   --max-size 10MB \
   --min-size 1KB \
   --min-files 2 \
   --max-depth 2 \
   --min-similarity 70 \
-  -o /custom/path/results.csv \
+  -o /output/path/results.csv \
   --verbose
 ```
 
@@ -35,7 +35,7 @@ python main.py /path/to/analyze \
 
 | Argument           | Description                                                                    |
 |:-------------------|:-------------------------------------------------------------------------------|
-| `path`             | Path to analyze (required)                                                     |
+| `paths`            | Paths to analyze (required)                                                    |
 | `--max-size`       | Maximum folder size (e.g., `10MB`)                                             |
 | `--min-size`       | Minimum folder size (e.g., `1KB`)                                              |
 | `--min-files`      | Minimum number of files/folders in a folder (default: `1`)                     |
@@ -69,13 +69,13 @@ python main.py /home/user/Downloads \
   --min-files 5
 ```
 
-### Example 3: Compare with greater depth
+### Example 3: Compare 2 directories with greater depth
 
-Analyzes all folders in `/home/user/Downloads`, with a maximum depth of 2.
+Analyzes all folders in `/home/user/Downloads` and `/mnt/ssd/Downloads`, with a maximum depth of 2.
 Spesifying the depth will give a more accurate representation of the folder match considering the subdirectories. It might however also end up not giving any results if set too high.
 
 ```shell
-python main.py /home/user/Downloads \
+python main.py /home/user/Downloads /mnt/ssd/Downloads \
   --max-depth 2 \
 ```
 
